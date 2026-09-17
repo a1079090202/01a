@@ -110,5 +110,130 @@ export function initDb() {
   CREATE INDEX IF NOT EXISTS idx_sched_time ON production_schedules(start_at, end_at);
   CREATE INDEX IF NOT EXISTS idx_repairs_mold ON repairs(mold_id);
   CREATE INDEX IF NOT EXISTS idx_logs_mold ON production_logs(mold_id);
+
+  -- ========================================================================
+  -- 数据库级红线（防线二）：触发器对任意连接、任意写入路径生效，
+  -- 即使绕过 HTTP 直连写库、或多进程并发也无法突破。
+  -- 应用层（modules/*）仍先行校验，给出更精确的中文 409（防线一）。
+  -- 时段重叠采用半开区间：NEW.start_at < old.end_at AND NEW.end_at > old.start_at，
+  -- 首尾相接不算冲突；时间为定长 'YYYY-MM-DD HH:mm' 字符串，可直接按字典序比较。
+  -- ========================================================================
+
+  -- 试模：同机台时段互斥（对撞其他试模 或 已排产的排产单）
+  CREATE TRIGGER IF NOT EXISTS trg_trials_busy_machine
+  BEFORE INSERT ON trials
+  FOR EACH ROW
+  WHEN EXISTS (
+        SELECT 1 FROM trials t
+        WHERE t.machine_id = NEW.machine_id
+          AND NEW.start_at < t.end_at AND NEW.end_at > t.start_at
+       )
+    OR EXISTS (
+        SELECT 1 FROM production_schedules s
+        WHERE s.machine_id = NEW.machine_id AND s.status = '已排产'
+          AND NEW.start_at < s.end_at AND NEW.end_at > s.start_at
+       )
+  BEGIN
+    SELECT RAISE(ABORT, '该时段机台已被其他试模/排产占用，时段冲突');
+  END;
+
+  -- 试模：同模具时段互斥（一副模具同一时段不能挂两件事）
+  CREATE TRIGGER IF NOT EXISTS trg_trials_busy_mold
+  BEFORE INSERT ON trials
+  FOR EACH ROW
+  WHEN EXISTS (
+        SELECT 1 FROM trials t
+        WHERE t.mold_id = NEW.mold_id
+          AND NEW.start_at < t.end_at AND NEW.end_at > t.start_at
+       )
+    OR EXISTS (
+        SELECT 1 FROM production_schedules s
+        WHERE s.mold_id = NEW.mold_id AND s.status = '已排产'
+          AND NEW.start_at < s.end_at AND NEW.end_at > s.start_at
+       )
+  BEGIN
+    SELECT RAISE(ABORT, '该模具在同一时段已被其他试模/排产占用，不能重复占用');
+  END;
+
+  -- 试模：改模单未闭环不得排试模
+  CREATE TRIGGER IF NOT EXISTS trg_trials_open_repair
+  BEFORE INSERT ON trials
+  FOR EACH ROW
+  WHEN EXISTS (
+        SELECT 1 FROM repairs r
+        WHERE r.mold_id = NEW.mold_id AND r.status = '进行中'
+       )
+  BEGIN
+    SELECT RAISE(ABORT, '该模具有未关闭的改模单，必须验收合格闭环后才能排试模');
+  END;
+
+  -- 排产：同机台时段互斥（仅当新单本身为“已排产”；完工单是历史记录，不占时段）
+  CREATE TRIGGER IF NOT EXISTS trg_sched_busy_machine
+  BEFORE INSERT ON production_schedules
+  FOR EACH ROW
+  WHEN NEW.status = '已排产'
+   AND (
+        EXISTS (
+          SELECT 1 FROM trials t
+          WHERE t.machine_id = NEW.machine_id
+            AND NEW.start_at < t.end_at AND NEW.end_at > t.start_at
+        )
+     OR EXISTS (
+          SELECT 1 FROM production_schedules s
+          WHERE s.machine_id = NEW.machine_id AND s.status = '已排产'
+            AND NEW.start_at < s.end_at AND NEW.end_at > s.start_at
+        )
+       )
+  BEGIN
+    SELECT RAISE(ABORT, '该时段机台已被其他试模/排产占用，时段冲突');
+  END;
+
+  -- 排产：同模具时段互斥
+  CREATE TRIGGER IF NOT EXISTS trg_sched_busy_mold
+  BEFORE INSERT ON production_schedules
+  FOR EACH ROW
+  WHEN NEW.status = '已排产'
+   AND (
+        EXISTS (
+          SELECT 1 FROM trials t
+          WHERE t.mold_id = NEW.mold_id
+            AND NEW.start_at < t.end_at AND NEW.end_at > t.start_at
+        )
+     OR EXISTS (
+          SELECT 1 FROM production_schedules s
+          WHERE s.mold_id = NEW.mold_id AND s.status = '已排产'
+            AND NEW.start_at < s.end_at AND NEW.end_at > s.start_at
+        )
+       )
+  BEGIN
+    SELECT RAISE(ABORT, '该模具在同一时段已被其他试模/排产占用，不能重复占用');
+  END;
+
+  -- 排产：超寿命模具未经主管确认（确认标记=0）不得排产
+  CREATE TRIGGER IF NOT EXISTS trg_sched_overlife
+  BEFORE INSERT ON production_schedules
+  FOR EACH ROW
+  WHEN NEW.status = '已排产'
+   AND NEW.overlife_confirmed = 0
+   AND EXISTS (
+        SELECT 1 FROM molds m
+        WHERE m.id = NEW.mold_id AND m.current_cycles >= m.rated_life
+       )
+  BEGIN
+    SELECT RAISE(ABORT, '模具已超额定寿命，未经主管确认不得排产');
+  END;
+
+  -- 排产：改模单未闭环不得排产
+  CREATE TRIGGER IF NOT EXISTS trg_sched_open_repair
+  BEFORE INSERT ON production_schedules
+  FOR EACH ROW
+  WHEN NEW.status = '已排产'
+   AND EXISTS (
+        SELECT 1 FROM repairs r
+        WHERE r.mold_id = NEW.mold_id AND r.status = '进行中'
+       )
+  BEGIN
+    SELECT RAISE(ABORT, '该模具有未关闭的改模单，必须验收合格闭环后才能排产');
+  END;
   `)
 }

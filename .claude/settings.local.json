@@ -10,6 +10,7 @@
       "Read(//root/.cache/**)",
       "Bash(npm ls *)",
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
 <<<<<<< HEAD
       "Bash(git -C /workspace log --oneline -5)",
@@ -27,6 +28,9 @@
 <<<<<<< Updated upstream
 =======
 >>>>>>> b7c5d4c61f231d011e73d85e9f3a188d12308cc8
+>>>>>>> Stashed changes
+=======
+      "Bash(git -C /workspace log --oneline -5)"
 >>>>>>> Stashed changes
     ]
   }
