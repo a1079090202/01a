@@ -32,6 +32,10 @@ export function createApp() {
     if (err instanceof ApiError) {
       return res.status(err.status).json({ error: err.message })
     }
+    // 数据库触发器红线（RAISE ABORT）：与业务 409 同等对待，消息即触发器中的中文原因
+    if (err?.code === 'SQLITE_CONSTRAINT_TRIGGER') {
+      return res.status(409).json({ error: err.message })
+    }
     console.error(err)
     res.status(500).json({ error: '服务器内部错误' })
   })

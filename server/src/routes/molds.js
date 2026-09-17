@@ -4,7 +4,15 @@ import { nowLocal } from '../util/dates.js'
 import { lifeOf } from '../modules/lifeAlert.js'
 import { listWithLife } from '../modules/lifeAlert.js'
 import { addCycles, resetCycles, listLogs } from '../modules/lifeCounter.js'
-import { currentOpenRepair } from '../modules/repairRounds.js'
+<<<<<<< Updated upstream
+import { currentOpenRepair, listRepairs } from '../modules/repairRounds.js'
+=======
+<<<<<<< HEAD
+import { listRepairs, currentOpenRepair } from '../modules/repairRounds.js'
+=======
+import { currentOpenRepair, listRepairs } from '../modules/repairRounds.js'
+>>>>>>> b7c5d4c61f231d011e73d85e9f3a188d12308cc8
+>>>>>>> Stashed changes
 
 const router = Router()
 
@@ -63,11 +71,17 @@ router.get('/:id/trials', (req, res) => {
   `).all(req.params.id))
 })
 
-// 模具的改模单（封面列表）
+<<<<<<< Updated upstream
+// 模具的改模单（封面列表，状态以当前有效轮次为准，与改模单列表同一口径）
+=======
+<<<<<<< HEAD
+// 模具的改模单（封面列表，状态/当前轮以“当前有效任务”为准）
+=======
+// 模具的改模单（封面列表，状态以当前有效轮次为准，与改模单列表同一口径）
+>>>>>>> b7c5d4c61f231d011e73d85e9f3a188d12308cc8
+>>>>>>> Stashed changes
 router.get('/:id/repairs', (req, res) => {
-  res.json(db.prepare(`
-    SELECT r.* FROM repairs r WHERE r.id = r.root_repair_id AND r.mold_id = ? ORDER BY r.id DESC
-  `).all(req.params.id))
+  res.json(listRepairs({ moldId: Number(req.params.id) }))
 })
 
 // 生产模次日志

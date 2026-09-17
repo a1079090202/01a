@@ -5,6 +5,7 @@ import { assertSlotFree, occupancy } from '../modules/scheduleConflict.js'
 import {
   createRepair, assertNoOpenRepair, RESULTS
 } from '../modules/repairRounds.js'
+import { syncMoldStatus } from '../modules/moldStatus.js'
 
 const router = Router()
 
@@ -58,17 +59,21 @@ router.post('/', (req, res) => {
   const start = requireDateTime(start_at, '开始时间')
   const end = requireDateTime(end_at, '结束时间')
 
-  const mold = db.prepare('SELECT * FROM molds WHERE id = ?').get(moldId)
-  if (!mold) throw new ApiError(404, '模具不存在')
-  if (!db.prepare('SELECT id FROM machines WHERE id = ?').get(machineId)) {
-    throw new ApiError(404, '机台不存在')
-  }
+  // 红线全部放进一个写事务（BEGIN IMMEDIATE）：校验与插入原子化，
+  // 与并发的排程/记模次互斥；数据库触发器再做最终兜底。
+  const createTrial = db.transaction(() => {
+    const mold = db.prepare('SELECT * FROM molds WHERE id = ?').get(moldId)
+    if (!mold) throw new ApiError(404, '模具不存在')
+    if (!db.prepare('SELECT id FROM machines WHERE id = ?').get(machineId)) {
+      throw new ApiError(404, '机台不存在')
+    }
 
-  // 红线 1：改模未闭环不能再试模（委外未回厂/回厂未验收都会被挡）
-  assertNoOpenRepair(moldId)
-  // 红线 2：机台/模具时段冲突（跨试模与排产）
-  assertSlotFree({ machineId, moldId, start, end })
+    // 红线 1：改模未闭环不能再试模（委外未回厂/回厂未验收都会被挡）
+    assertNoOpenRepair(moldId)
+    // 红线 2：机台/模具时段冲突（跨试模与排产）
+    assertSlotFree({ machineId, moldId, start, end })
 
+<<<<<<< Updated upstream
   const maxNo = db.prepare('SELECT COALESCE(MAX(trial_no),0) AS n FROM trials WHERE mold_id = ?')
     .get(moldId).n
   const ts = nowLocal()
@@ -76,8 +81,23 @@ router.post('/', (req, res) => {
     INSERT INTO trials (mold_id, trial_no, machine_id, start_at, end_at, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(moldId, maxNo + 1, machineId, start, end, ts)
-  db.prepare("UPDATE molds SET status = '试模中' WHERE id = ? AND status = '在库'").run(moldId)
+  syncMoldStatus(moldId)
   res.status(201).json(loadTrial(info.lastInsertRowid))
+=======
+    const maxNo = db.prepare('SELECT COALESCE(MAX(trial_no),0) AS n FROM trials WHERE mold_id = ?')
+      .get(moldId).n
+    const ts = nowLocal()
+    const info = db.prepare(`
+      INSERT INTO trials (mold_id, trial_no, machine_id, start_at, end_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(moldId, maxNo + 1, machineId, start, end, ts)
+    db.prepare("UPDATE molds SET status = '试模中' WHERE id = ? AND status = '在库'").run(moldId)
+    return info.lastInsertRowid
+  })
+
+  const newId = createTrial.immediate()
+  res.status(201).json(loadTrial(newId))
+>>>>>>> Stashed changes
 })
 
 /**
@@ -97,7 +117,6 @@ router.post('/:id/judge', (req, res) => {
   const tx = db.transaction(() => {
     db.prepare('UPDATE trials SET result = ?, problem = ? WHERE id = ?')
       .run(result, problem, id)
-    db.prepare("UPDATE molds SET status = '在库' WHERE id = ? AND status = '试模中'").run(t.mold_id)
 
     if (result === '不合格') {
       const r = req.body?.repair || {}
@@ -110,6 +129,9 @@ router.post('/:id/judge', (req, res) => {
         sendDate: r.send_date || null,
         problem: problem || r.problem || null
       })
+    } else {
+      // 合格 / 让步接收：试模任务结束，按当前有效任务重算资产状态
+      syncMoldStatus(t.mold_id)
     }
   })
   tx()

@@ -9,6 +9,7 @@
       "Bash(pkill -f \"server/src/index.js\")",
       "Read(//root/.cache/**)",
       "Bash(npm ls *)",
+<<<<<<< HEAD
       "Bash(git -C /workspace log --oneline -5)",
       "Bash(git -C /workspace diff --stat HEAD~1)",
       "Bash(curl -s http://127.0.0.1:3001/api/health)",
@@ -17,6 +18,31 @@
       "Bash(rm -f /tmp/c1.txt /tmp/c2.txt /tmp/t1.txt /tmp/t2.txt /tmp/m1.txt /tmp/m2.txt)",
       "Bash(awk '{print $2}')",
       "Bash(xargs -r kill)"
+=======
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+      "Bash(git -C /workspace log --oneline -5)",
+      "Bash(python3 *)",
+      "Bash(npm --prefix /workspace/web run build)",
+      "Bash(pkill -f 'src/index.js')",
+      "Bash(curl -s http://127.0.0.1:3001/api/health)",
+      "Bash(kill 696)"
+=======
+>>>>>>> Stashed changes
+      "Bash(PORT=3001 node src/index.js)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(pkill -f 'node src/index.js')",
+      "Bash(curl -s -m 2 http://localhost:3001/api/health)"
+<<<<<<< Updated upstream
+=======
+>>>>>>> b7c5d4c61f231d011e73d85e9f3a188d12308cc8
+>>>>>>> Stashed changes
+=======
+      "Bash(git -C /workspace log --oneline -5)"
+>>>>>>> Stashed changes
+>>>>>>> e72a390d091840802029482a5ff7ec1d3523f1d2
     ]
   }
 }

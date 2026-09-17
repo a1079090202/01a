@@ -4,6 +4,7 @@ import { nowLocal, requireDateTime } from '../util/dates.js'
 import { assertSlotFree } from '../modules/scheduleConflict.js'
 import { assertCanSchedule, lifeOf } from '../modules/lifeAlert.js'
 import { assertNoOpenRepair } from '../modules/repairRounds.js'
+import { syncMoldStatus } from '../modules/moldStatus.js'
 import { addCycles } from '../modules/lifeCounter.js'
 
 const router = Router()
@@ -51,19 +52,37 @@ router.post('/schedules', (req, res) => {
   const end = requireDateTime(b.end_at, '结束时间')
   const qty = b.qty === '' || b.qty === undefined || b.qty === null ? null : Number(b.qty)
   if (qty !== null && (!Number.isInteger(qty) || qty <= 0)) throw new ApiError(400, '计划数量须为正整数')
-
-  const mold = db.prepare('SELECT * FROM molds WHERE id = ?').get(moldId)
-  if (!mold) throw new ApiError(404, '模具不存在')
-  if (!db.prepare('SELECT id FROM machines WHERE id = ?').get(machineId)) throw new ApiError(404, '机台不存在')
-
-  assertNoOpenRepair(moldId)
-  assertSlotFree({ machineId, moldId, start, end })
   // 超寿命生命线：必须 confirmed=true 且填写主管姓名
-  const verdict = assertCanSchedule(mold, {
+  const confirmation = {
     confirmed: b.overlife_confirmed === true,
     confirmer: b.confirmer || ''
+  }
+
+  // 三道卡口 + 插入全部放进一个写事务（BEGIN IMMEDIATE）：
+  // 模具模次在事务内读取（拿到最新值，避免与并发记模次竞争），
+  // 校验与插入原子化；数据库触发器再做跨进程/直连写库的最终兜底。
+  const createSchedule = db.transaction(() => {
+    const mold = db.prepare('SELECT * FROM molds WHERE id = ?').get(moldId)
+    if (!mold) throw new ApiError(404, '模具不存在')
+    if (!db.prepare('SELECT id FROM machines WHERE id = ?').get(machineId)) throw new ApiError(404, '机台不存在')
+
+    assertNoOpenRepair(moldId)
+    assertSlotFree({ machineId, moldId, start, end })
+    const verdict = assertCanSchedule(mold, confirmation)
+
+    const ts = nowLocal()
+    const info = db.prepare(`
+      INSERT INTO production_schedules
+        (mold_id, product_name, machine_id, start_at, end_at, qty,
+         overlife_confirmed, confirmer, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, '已排产', ?)
+    `).run(moldId, String(b.product_name).trim(), machineId, start, end, qty,
+      verdict.overlifeConfirmed ? 1 : 0, verdict.confirmer, ts)
+    db.prepare("UPDATE molds SET status = '生产中' WHERE id = ? AND status = '在库'").run(moldId)
+    return info.lastInsertRowid
   })
 
+<<<<<<< Updated upstream
   const ts = nowLocal()
   const info = db.prepare(`
     INSERT INTO production_schedules
@@ -72,9 +91,13 @@ router.post('/schedules', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, '已排产', ?)
   `).run(moldId, String(b.product_name).trim(), machineId, start, end, qty,
     verdict.overlifeConfirmed ? 1 : 0, verdict.confirmer, ts)
-  db.prepare("UPDATE molds SET status = '生产中' WHERE id = ? AND status = '在库'").run(moldId)
+  syncMoldStatus(moldId)
 
   res.status(201).json(loadSchedule(info.lastInsertRowid))
+=======
+  const newId = createSchedule.immediate()
+  res.status(201).json(loadSchedule(newId))
+>>>>>>> Stashed changes
 })
 
 // 完工
@@ -82,7 +105,7 @@ router.post('/schedules/:id/finish', (req, res) => {
   const s = loadSchedule(Number(req.params.id))
   if (s.status !== '已排产') throw new ApiError(409, '排产单已完工')
   db.prepare("UPDATE production_schedules SET status = '已完工' WHERE id = ?").run(s.id)
-  db.prepare("UPDATE molds SET status = '在库' WHERE id = ? AND status = '生产中'").run(s.mold_id)
+  syncMoldStatus(s.mold_id)
   res.json(loadSchedule(s.id))
 })
 
