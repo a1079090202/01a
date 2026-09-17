@@ -174,8 +174,14 @@ export function listRepairs({ moldId = null, openOnly = false } = {}) {
   const where = []
   const params = {}
   if (moldId) { where.push('r.mold_id = @mold'); params.mold = moldId }
-  if (openOnly) where.push("r.status = '进行中'")
-  // 每个改模单只取首行作为封面，结论以最后一轮为准
+  // 「进行中」按整单判定：同 root_repair_id 下存在进行中轮次即为进行中。
+  // 不能看封面行（第 1 轮）——退回重改会把第 1 轮关掉，但单子还在推进，
+  // 按封面行过滤会让重改后的单子从待办里消失。
+  if (openOnly) {
+    where.push(`EXISTS (SELECT 1 FROM repairs x
+      WHERE x.root_repair_id = r.root_repair_id AND x.status = '进行中')`)
+  }
+  // 每个改模单只取首行作为封面，状态以当前有效轮次（进行中轮，否则最后一轮）为准
   const rows = db.prepare(`
     SELECT r.*, m.code AS mold_code, m.product_name,
            g.total_rounds AS total_rounds, g.max_round AS max_round
@@ -197,6 +203,7 @@ export function listRepairs({ moldId = null, openOnly = false } = {}) {
         current_round: cur.round_no,
         repair_type: cur.repair_type,
         vendor: cur.vendor,
+        send_date: cur.send_date,
         return_date: cur.return_date,
         current_id: cur.id,
         status: '进行中'
@@ -211,6 +218,7 @@ export function listRepairs({ moldId = null, openOnly = false } = {}) {
       current_round: last.round_no,
       repair_type: last.repair_type,
       vendor: last.vendor,
+      send_date: last.send_date,
       return_date: last.return_date,
       current_id: last.id,
       status: '已关闭'

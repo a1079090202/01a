@@ -8,7 +8,11 @@
       "Bash(node *)",
       "Bash(pkill -f \"server/src/index.js\")",
       "Read(//root/.cache/**)",
-      "Bash(npm ls *)"
+      "Bash(npm ls *)",
+      "Bash(PORT=3001 node src/index.js)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(pkill -f 'node src/index.js')",
+      "Bash(curl -s -m 2 http://localhost:3001/api/health)"
     ]
   }
 }
