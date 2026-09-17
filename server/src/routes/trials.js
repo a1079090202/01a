@@ -5,6 +5,7 @@ import { assertSlotFree, occupancy } from '../modules/scheduleConflict.js'
 import {
   createRepair, assertNoOpenRepair, RESULTS
 } from '../modules/repairRounds.js'
+import { syncMoldStatus } from '../modules/moldStatus.js'
 
 const router = Router()
 
@@ -76,7 +77,7 @@ router.post('/', (req, res) => {
     INSERT INTO trials (mold_id, trial_no, machine_id, start_at, end_at, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(moldId, maxNo + 1, machineId, start, end, ts)
-  db.prepare("UPDATE molds SET status = '试模中' WHERE id = ? AND status = '在库'").run(moldId)
+  syncMoldStatus(moldId)
   res.status(201).json(loadTrial(info.lastInsertRowid))
 })
 
@@ -97,7 +98,6 @@ router.post('/:id/judge', (req, res) => {
   const tx = db.transaction(() => {
     db.prepare('UPDATE trials SET result = ?, problem = ? WHERE id = ?')
       .run(result, problem, id)
-    db.prepare("UPDATE molds SET status = '在库' WHERE id = ? AND status = '试模中'").run(t.mold_id)
 
     if (result === '不合格') {
       const r = req.body?.repair || {}
@@ -110,6 +110,9 @@ router.post('/:id/judge', (req, res) => {
         sendDate: r.send_date || null,
         problem: problem || r.problem || null
       })
+    } else {
+      // 合格 / 让步接收：试模任务结束，按当前有效任务重算资产状态
+      syncMoldStatus(t.mold_id)
     }
   })
   tx()

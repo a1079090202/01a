@@ -76,7 +76,7 @@ export default function RepairsPage() {
       </div>
 
       {detail && (
-        <RepairDetailModal detail={detail} onClose={() => { setDetail(null); setDetailId(null); load() }}
+        <RepairDetailModal key={detail.current_id} detail={detail} onClose={() => { setDetail(null); setDetailId(null); load() }}
           onChanged={refreshDetail} />
       )}
       {showCreate && <CreateRepairModal molds={molds} onClose={() => setShowCreate(false)}
@@ -89,11 +89,14 @@ function RoundTimeline({ detail }) {
   return (
     <ul className="rounds">
       {detail.rounds.map((r) => {
-        const cls = r.status === '已关闭' && r.acceptance === '合格' ? 'ok'
+        const isCurrent = r.id === detail.current_id
+        const cls = isCurrent && detail.group_open ? 'cur'
+          : r.status === '已关闭' && r.acceptance === '合格' ? 'ok'
           : r.acceptance === '不合格' ? 'bad' : 'cur'
         return (
           <li key={r.id} className={cls}>
             <b>第 {r.round_no} 轮 · {r.repair_type}{r.vendor ? ` · ${r.vendor}` : ''}</b>{' '}
+            {isCurrent && detail.group_open && <span className="badge blue">当前有效轮</span>}{' '}
             <Badge value={r.acceptance} />
             <div className="round-meta">
               送修 {fmtDate(r.send_date)} ｜ 回厂 {fmtDate(r.return_date)}
@@ -145,6 +148,13 @@ function RepairDetailModal({ detail, onClose, onChanged }) {
     <Modal title={`改模单 #${detail.root_repair_id} · ${detail.mold_code}（${detail.product_name}）`}
       onClose={onClose} wide>
       <RoundTimeline detail={detail} />
+
+      {detail.requested_id && detail.requested_id !== detail.current_id && (
+        <div className="alert-banner amber" style={{ marginTop: 12 }}>
+          你打开的第 {detail.rounds.find((r) => r.id === detail.requested_id)?.round_no} 轮已结束（验收不合格已退回重改），
+          以下操作区已自动定位到<b>当前有效任务：第 {detail.current_round} 轮</b>。
+        </div>
+      )}
 
       {!closed && (
         <div className="panel" style={{ background: '#f7f9fc', marginTop: 14 }}>

@@ -4,6 +4,7 @@ import { nowLocal, requireDateTime } from '../util/dates.js'
 import { assertSlotFree } from '../modules/scheduleConflict.js'
 import { assertCanSchedule, lifeOf } from '../modules/lifeAlert.js'
 import { assertNoOpenRepair } from '../modules/repairRounds.js'
+import { syncMoldStatus } from '../modules/moldStatus.js'
 import { addCycles } from '../modules/lifeCounter.js'
 
 const router = Router()
@@ -72,7 +73,7 @@ router.post('/schedules', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, '已排产', ?)
   `).run(moldId, String(b.product_name).trim(), machineId, start, end, qty,
     verdict.overlifeConfirmed ? 1 : 0, verdict.confirmer, ts)
-  db.prepare("UPDATE molds SET status = '生产中' WHERE id = ? AND status = '在库'").run(moldId)
+  syncMoldStatus(moldId)
 
   res.status(201).json(loadSchedule(info.lastInsertRowid))
 })
@@ -82,7 +83,7 @@ router.post('/schedules/:id/finish', (req, res) => {
   const s = loadSchedule(Number(req.params.id))
   if (s.status !== '已排产') throw new ApiError(409, '排产单已完工')
   db.prepare("UPDATE production_schedules SET status = '已完工' WHERE id = ?").run(s.id)
-  db.prepare("UPDATE molds SET status = '在库' WHERE id = ? AND status = '生产中'").run(s.mold_id)
+  syncMoldStatus(s.mold_id)
   res.json(loadSchedule(s.id))
 })
 
