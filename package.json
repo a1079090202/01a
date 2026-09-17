@@ -1,0 +1,20 @@
+{
+  "name": "mold-ledger",
+  "version": "1.0.0",
+  "private": true,
+  "description": "注塑车间模具台账系统：模具档案、试模排程、改模委外验收、模次寿命管理",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "seed": "npm run seed --workspace server",
+    "dev": "concurrently -n SERVER,WEB -c blue,green \"npm run dev --workspace server\" \"npm run dev --workspace web\"",
+    "build": "npm run build --workspace web",
+    "start": "npm run start --workspace server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

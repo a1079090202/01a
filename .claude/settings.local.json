@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "Bash(npm install *)",
+      "Bash(node -e \"import\\('better-sqlite3'\\).then\\(\\(\\)=>console.log\\('better-sqlite3 OK'\\)\\)\")",
+      "Bash(npm run *)",
+      "Bash(node *)",
+      "Bash(pkill -f \"server/src/index.js\")",
+      "Read(//root/.cache/**)",
+      "Bash(npm ls *)"
+    ]
+  }
+}
